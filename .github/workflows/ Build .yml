@@ -1,5 +1,5 @@
 ---
-name: 02 Build with BuildKit Cache
+name:  Build 
 
 on:
   push:
@@ -11,9 +11,11 @@ jobs:
   build-image:
     name: Build Image
     runs-on: ubuntu-latest
+    
     steps:
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
+
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -25,18 +27,22 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+
       - name: Docker meta
         id: docker_meta
         uses: docker/metadata-action@v5
         with:
           images: bretfisher/docker-ci-automation
-  
+          flavor: |
+            latest=false
           tags: |
             type=raw,value=04
             type=raw,value=latest,enable=${{ endsWith(github.ref, github.event.repository.default_branch) }}
             type=ref,event=pr
             type=ref,event=branch
             type=semver,pattern={{version}}
+
+
       
       - name: Docker build
         uses: docker/build-push-action@v6
@@ -44,9 +50,35 @@ jobs:
           push: true
           tags: ${{ steps.docker_meta.outputs.tags }}
           labels: ${{ steps.docker_meta.outputs.labels }}
-        
-
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
           platforms: linux/amd64,linux/arm64,linux/arm/v7
+          
+          
+      - name: Find comment for image tags
+        uses: peter-evans/find-comment@v3
+        if: github.event_name == 'pull_request'
+        id: fc
+        with:
+           issue-number: ${{ github.event.pull_request.number }}
+           comment-author: 'github-actions[bot]'
+           body-includes: Docker image tag(s) pushed
+      
+       
+      - name: Create or update comment for image tags
+        uses: peter-evans/create-or-update-comment@v4
+        if: github.event_name == 'pull_request'
+        with:
+          comment-id: ${{ steps.fc.outputs.comment-id }}
+          issue-number: ${{ github.event.pull_request.number }}
+          body: |
+            Docker image tag(s) pushed:
+            ```text
+            ${{ steps.docker_meta.outputs.tags }}
+            ```
+
+            Labels added to images:
+            ```text
+            ${{ steps.docker_meta.outputs.labels }}
+            ```
+          edit-mode: replace
